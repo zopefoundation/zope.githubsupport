@@ -23,7 +23,8 @@ from github3 import login
 DEFAULT_CONFIG_FILE = os.path.join(
     os.path.dirname(__file__), '..', '..', '..', 'zope.cfg')
 
-to_bool = lambda x: x.lower() in ('t', 'true', 'y', 'yes', 'on')
+noop = lambda x: x
+to_bool = lambda x: x.lower() in ('t', 'true', 'y', 'yes', 'on') or None
 
 CONV_MAP = {
     'email': {'send_from_author': to_bool}
@@ -36,9 +37,10 @@ def update_hooks(repo, config, options):
         active = config.getboolean('hooks:'+name, 'active', fallback=True)
         OMAP = CONV_MAP.get(name, {})
         conf = dict(
-            [(oname, OMAP[oname](value) if oname in OMAP else value)
+            [(oname, OMAP.get(oname, noop)(value))
              for (oname, value) in config.items('hooks:'+name)
-             if oname not in ('active',)])
+             if (oname not in ('active',) and
+                 OMAP.get(oname, noop)(value) is not None)])
         if name not in hooks:
             hook = repo.create_hook(name, conf, active=active)
             print("  * Created Hook: " + hook.name)
@@ -65,8 +67,11 @@ def update_repository(gh, config, options):
     repo = gh.repository(org_name, name)
     print("Found Repository: " + repo.name)
     if desc is not None:
-        repo.edit(name, description=desc)
-        print("Updated Title: " + desc)
+        updated = repo.edit(name, description=desc)
+        if updated:
+            print("Updated Title: " + desc)
+        else:
+            print("Updated Title: **FAILED**")
     update_hooks(repo, config, options)
 
 def get_github(options):
