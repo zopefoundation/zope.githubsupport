@@ -1,6 +1,6 @@
 ##############################################################################
 #
-# Copyright (c) 2009 Zope Corporation and Contributors.
+# Copyright (c) 2013 Zope Corporation and Contributors.
 # All Rights Reserved.
 #
 # This software is subject to the provisions of the Zope Public License,
@@ -40,7 +40,7 @@ def add_repository(gh, config, options):
     name, desc = options.positional
     repo = gh.repository(org_name, name)
     if repo is None:
-        org = gh.organization()
+        org = gh.organization(org_name)
         repo = org.create_repo(name, description=desc)
         print("Created Repository: " + repo.name)
     else:

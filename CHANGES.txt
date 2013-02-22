@@ -6,3 +6,5 @@ CHANGES
 ------------------
 
 - Initial release.
+
+  * `addrepos` - Add a repository on Github and setup hooks.

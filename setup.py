@@ -53,6 +53,7 @@ setup(
         ],
     entry_points = dict(console_scripts=[
         'addrepos = zope.githubsupport.repos:addrepos',
+        'migrate = zope.githubsupport.migrate:migrate',
         ]),
     include_package_data = True,
     zip_safe = False,
