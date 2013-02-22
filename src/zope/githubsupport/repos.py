@@ -23,17 +23,29 @@ from github3 import login
 DEFAULT_CONFIG_FILE = os.path.join(
     os.path.dirname(__file__), '..', '..', '..', 'zope.cfg')
 
-def add_hooks(repo, config, options):
+to_bool = lambda x: x.lower() in ('t', 'true', 'y', 'yes', 'on')
+
+CONV_MAP = {
+    'email': {'send_from_author': to_bool}
+    }
+
+def update_hooks(repo, config, options):
+    hooks = dict((h.name, h) for h in repo.iter_hooks())
     for name in [section[6:] for section in config.sections()
                  if section.startswith('hooks')]:
         active = config.getboolean('hooks:'+name, 'active', fallback=True)
-        conf = dict(config.items('hooks:'+name))
-        conf.pop('active')
-        hook = repo.create_hook(name, conf, active=active)
-        if hook is None:
-            print("  Ignored Hook: " + name)
-        else:
+        OMAP = CONV_MAP.get(name, {})
+        conf = dict(
+            [(oname, OMAP[oname](value) if oname in OMAP else value)
+             for (oname, value) in config.items('hooks:'+name)
+             if oname not in ('active',)])
+        if name not in hooks:
+            hook = repo.create_hook(name, conf, active=active)
             print("  * Created Hook: " + hook.name)
+        else:
+            hook = hooks[name]
+            hook.edit(name, conf)
+            print("  * Updated Hook: " + hook.name)
 
 def add_repository(gh, config, options):
     org_name = config.get('github', 'organization')
@@ -45,7 +57,17 @@ def add_repository(gh, config, options):
         print("Created Repository: " + repo.name)
     else:
         print("Found Repository: " + repo.name)
-    add_hooks(repo, config, options)
+    update_hooks(repo, config, options)
+
+def update_repository(gh, config, options):
+    org_name = config.get('github', 'organization')
+    name, desc = options.positional
+    repo = gh.repository(org_name, name)
+    print("Found Repository: " + repo.name)
+    if desc is not None:
+        repo.edit(name, description=desc)
+        print("Updated Title: " + desc)
+    update_hooks(repo, config, options)
 
 def get_github(options):
     return login(options.username, options.password)
@@ -59,13 +81,15 @@ def get_options(parser, args=None, defaults=None):
     if args is None:
         args = sys.argv
     options, positional = parser.parse_args(args)
+    if len(positional) == 1:
+        positional.append(None)
     options.positional = positional
     return options
 
 ###############################################################################
 # Command-line UI
 
-parser = optparse.OptionParser("%prog [options] REPOS DESC")
+parser = optparse.OptionParser("%prog [options] REPOS [DESC]")
 
 config = optparse.OptionGroup(
     parser, "Configuration", "Options that deal with configuring the browser.")
@@ -96,3 +120,12 @@ def addrepos(args=None):
     gh = get_github(options)
     config = load_config(options.configfile)
     add_repository(gh, config, options)
+
+def updaterepos(args=None):
+    if args is None:
+        args = sys.argv[1:]
+
+    options = get_options(parser, args)
+    gh = get_github(options)
+    config = load_config(options.configfile)
+    update_repository(gh, config, options)

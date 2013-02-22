@@ -50,7 +50,8 @@ def svn2git(target_path, config, options):
     if rules_path is None:
         rules_path = tempfile.mktemp(pkg_name+'.txt')
         ns = {'package': pkg_name,
-              'package_regex': pkg_name.replace('.', '\\.')}
+              'package_regex': pkg_name.replace('.', '\\.'),
+              'package_path': pkg_name.replace('.', '/')}
         with io.open(rules_path, 'w') as file:
             file.write(
                 config.get('migrate', 'rules-template').format(**ns))
