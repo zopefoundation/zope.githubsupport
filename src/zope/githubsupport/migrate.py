@@ -37,6 +37,8 @@ def do(cmd, cwd=None):
     out, _ = p.communicate()
     if out:
         print(out.decode())
+    if p.returncode != 0:
+        sys.exit(p.returncode)
 
 
 def svn2git(target_path, config, options):
@@ -119,7 +121,8 @@ def update_winegg(config, options):
 
 def migrate_package(config, options):
     if options.create_repos:
-        repos.addrepos(options.orig_args)
+        gh = repos.get_github(options)
+        repos.add_repository(gh, config, options)
     git_path = options.git_path
     if git_path is None:
         git_path = tempfile.mkdtemp()
@@ -157,7 +160,7 @@ def get_options(parser, args=None, defaults=None):
 parser = optparse.OptionParser("%prog [options] REPOS [DESC]")
 
 config = optparse.OptionGroup(
-    parser, "Configuration", "Options that deal with configuring the browser.")
+    parser, "Configuration", "Options that deal with migration.")
 
 config.add_option(
     '--create', '-C', action="store_true", dest='create_repos', default=False,
