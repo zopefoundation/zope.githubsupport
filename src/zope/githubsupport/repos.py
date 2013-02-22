@@ -49,30 +49,49 @@ def update_hooks(repo, config, options):
             hook.edit(name, conf)
             print("  * Updated Hook: " + hook.name)
 
-def add_repository(gh, config, options):
+def update_teams(org, repo, config, options):
+    all_teams = dict((t.name, t) for t in org.iter_teams())
+    updated_team_names = [
+        t.strip() for t in config.get('github', 'teams').split()]
+    repo_teams = [t.name for t in repo.iter_teams()]
+    add = set(updated_team_names).difference(set(repo_teams))
+    delete = set(repo_teams).difference(set(updated_team_names))
+    # Add teams
+    for name in add:
+        all_teams[name].add_repo(repo.full_name)
+        print('  * Added Team: '+name)
+    # Delete teams
+    for name in delete:
+        all_teams[name].remove_repo(repo.full_name)
+        print('  * Removed Team: '+name)
+
+def update_repository(gh, config, options):
     org_name = config.get('github', 'organization')
-    name, desc = options.positional
+    name, desc = options.repos, options.description
     repo = gh.repository(org_name, name)
+    org = gh.organization(org_name)
     if repo is None:
-        org = gh.organization(org_name)
         repo = org.create_repo(name, description=desc)
         print("Created Repository: " + repo.name)
     else:
         print("Found Repository: " + repo.name)
-    update_hooks(repo, config, options)
-
-def update_repository(gh, config, options):
-    org_name = config.get('github', 'organization')
-    name, desc = options.positional
-    repo = gh.repository(org_name, name)
-    print("Found Repository: " + repo.name)
     if desc is not None:
         updated = repo.edit(name, description=desc)
         if updated:
             print("Updated Title: " + desc)
         else:
             print("Updated Title: **FAILED**")
+    update_teams(org, repo, config, options)
     update_hooks(repo, config, options)
+
+def update_all_repositories(gh, config, options):
+    org_name = config.get('github', 'organization')
+    org = gh.organization(org_name)
+    for repo in org.iter_repos():
+        print("Found Repository: " + repo.name)
+        update_teams(org, repo, config, options)
+        update_hooks(repo, config, options)
+
 
 def get_github(options):
     return login(options.username, options.password)
@@ -86,18 +105,29 @@ def get_options(parser, args=None, defaults=None):
     if args is None:
         args = sys.argv
     options, positional = parser.parse_args(args)
-    if len(positional) == 1:
-        positional.append(None)
     options.positional = positional
+    options.repos = options.description = None
+    if len(positional) == 1:
+        if options.all_repos:
+            options.description = positional[0]
+        else:
+            options.repos = positional[0]
+    elif len(positional) == 2:
+        options.repos = positional[0]
+        options.description = positional[1]
     return options
 
 ###############################################################################
 # Command-line UI
 
-parser = optparse.OptionParser("%prog [options] REPOS [DESC]")
+parser = optparse.OptionParser("%prog [options] [REPOS] [DESC]")
 
 config = optparse.OptionGroup(
     parser, "Configuration", "Options that deal with configuring the browser.")
+
+config.add_option(
+    '--all', action="store_true", dest='all_repos', default=False,
+    help="Update all repositories.")
 
 config.add_option(
     '--username', '--user', action="store", dest='username',
@@ -124,7 +154,7 @@ def addrepos(args=None):
     options = get_options(parser, args)
     gh = get_github(options)
     config = load_config(options.configfile)
-    add_repository(gh, config, options)
+    update_repository(gh, config, options)
 
 def updaterepos(args=None):
     if args is None:
@@ -133,4 +163,7 @@ def updaterepos(args=None):
     options = get_options(parser, args)
     gh = get_github(options)
     config = load_config(options.configfile)
-    update_repository(gh, config, options)
+    if options.all_repos:
+        update_all_repositories(gh, config, options)
+    else:
+        update_repository(gh, config, options)

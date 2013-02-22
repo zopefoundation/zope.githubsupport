@@ -123,7 +123,7 @@ def update_winegg(config, options):
 def migrate_package(config, options):
     if options.create_repos:
         gh = repos.get_github(options)
-        repos.add_repository(gh, config, options)
+        repos.update_repository(gh, config, options)
     git_path = options.git_path
     if git_path is None:
         git_path = tempfile.mkdtemp()
@@ -151,8 +151,9 @@ def get_options(parser, args=None, defaults=None):
         args = sys.argv
     options, positional = parser.parse_args(args)
     if len(positional) == 1:
-        positional.append('')
+        positional.append(None)
     options.positional = positional
+    options.repos, options.description = positional
     return options
 
 ###############################################################################
