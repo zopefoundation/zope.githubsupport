@@ -27,7 +27,7 @@ from zope.githubsupport import repos
 DEFAULT_CONFIG_FILE = os.path.join(
     os.path.dirname(__file__), '..', '..', '..', 'zope.cfg')
 
-def do(cmd, cwd=None):
+def do(cmd, cwd=None, print_stdout=True):
     print(' '.join(cmd))
     p = subprocess.Popen(
         cmd,
@@ -35,7 +35,7 @@ def do(cmd, cwd=None):
         stdout=subprocess.PIPE,
         cwd=cwd)
     out, _ = p.communicate()
-    if out:
+    if out and print_stdout:
         print(out.decode())
     if p.returncode != 0:
         sys.exit(p.returncode)
@@ -44,18 +44,22 @@ def do(cmd, cwd=None):
 def svn2git(target_path, config, options):
     print('Converting package into Git repository. ' +
           'That may take several minutes.')
-    pkg_name = options.positional[0]
-
     rules_path = options.rules_path
     if rules_path is None:
+        rules = []
+        for pkg_name in options.repos:
+            ns = {'package': pkg_name,
+                  'package_regex': pkg_name.replace('.', '\\.'),
+                  'package_path': pkg_name.replace('.', '/')}
+            rules.append(
+                config.get('migrate', 'pkg-rules-template').format(**ns))
+
+        ns = {'packages_rules': '\n\n'.join(rules)}
         rules_path = tempfile.mktemp(pkg_name+'.txt')
-        ns = {'package': pkg_name,
-              'package_regex': pkg_name.replace('.', '\\.'),
-              'package_path': pkg_name.replace('.', '/')}
         with io.open(rules_path, 'w') as file:
             file.write(
                 config.get('migrate', 'rules-template').format(**ns))
-        print('  Created rules file: ' + rules_path)
+        print('***** Created rules file: ' + rules_path)
 
     do([config.get('migrate', 'svn-all-fast-export'),
         '--svn-branches',
@@ -64,78 +68,84 @@ def svn2git(target_path, config, options):
         '--rules', rules_path,
         '--stats',
         config.get('migrate', 'svn-mirror'),
-        ], cwd=target_path)
+        ], cwd=target_path, print_stdout=False)
 
 
 def push2github(target_path, config, options):
-    pkg_name = options.positional[0]
-    git_path = os.path.join(target_path, pkg_name)
-    do(['git', 'remote', 'add', 'origin',
-        'git@github.com:%s/%s.git' %(
-                config.get('github', 'organization'), pkg_name)
-        ], cwd=git_path)
-    do(['git', 'push', '-u', 'origin', '--mirror'], cwd=git_path)
+    for pkg_name in options.repos:
+        git_path = os.path.join(target_path, pkg_name)
+        do(['git', 'remote', 'add', 'origin',
+            'git@github.com:%s/%s.git' %(
+                    config.get('github', 'organization'), pkg_name)
+            ], cwd=git_path)
+        do(['git', 'push', '-u', 'origin', '--mirror'], cwd=git_path)
 
 
 def clean_svn(config, options):
-    pkg_name = options.positional[0]
-    co_path = tempfile.mkdtemp()
-    print('Checking out code from SVN into: ' + co_path)
-    pkg_path = os.path.join(co_path, pkg_name+'.svn')
-    do(['svn', 'co',
-        config.get('migrate', 'svn-repos')+pkg_name+'/trunk',
-        pkg_path
-        ])
-    to_delete = [os.path.join(pkg_path, fn)
-                 for fn in os.listdir(pkg_path)
-                 if fn not in ('.svn',)]
-    if len(to_delete):
-        do(['svn', 'rm'] + to_delete)
-    moved_path = os.path.join(pkg_path, 'MOVED_TO_GITHUB')
-    with io.open(moved_path, 'w') as file:
-        file.write("See https://github.com/zopefoundation/"+pkg_name)
-    do(['svn', 'add', moved_path])
-    do(['svn', 'ci', '-m', 'Moved to GitHub.', pkg_path])
+    for pkg_name in options.repos:
+        co_path = tempfile.mkdtemp()
+        print('Checking out code from SVN into: ' + co_path)
+        pkg_path = os.path.join(co_path, pkg_name+'.svn')
+        do(['svn', 'co',
+            config.get('migrate', 'svn-repos')+pkg_name+'/trunk',
+            pkg_path
+            ])
+        to_delete = [os.path.join(pkg_path, fn)
+                     for fn in os.listdir(pkg_path)
+                     if fn not in ('.svn',)]
+        if len(to_delete):
+            do(['svn', 'rm'] + to_delete)
+        moved_path = os.path.join(pkg_path, 'MOVED_TO_GITHUB')
+        with io.open(moved_path, 'w') as file:
+            file.write("See https://github.com/zopefoundation/"+pkg_name)
+        do(['svn', 'add', moved_path])
+        do(['svn', 'ci', '-m', 'Moved to GitHub.', pkg_path])
 
 def update_ztk(config, options):
-    pkg_name = options.positional[0]
-    do(['sed', '-i',
-        's/%s = .*/%s = git \$\{buildout:github\}\/%s/g' %(
-                pkg_name, pkg_name, pkg_name),
-        os.path.join(config.get('migrate', 'ztk-path'), 'ztk-sources.cfg')
-        ])
-    do(['svn', 'ci',
-        '-m', pkg_name + ' moved to GitHub.',
-        config.get('migrate', 'ztk-path')])
+    for pkg_name in options.repos:
+        do(['sed', '-i',
+            's/%s = .*/%s = git \$\{buildout:github\}\/%s/g' %(
+                    pkg_name, pkg_name, pkg_name),
+            os.path.join(config.get('migrate', 'ztk-path'), 'ztk-sources.cfg')
+            ])
+        do(['svn', 'ci',
+            '-m', pkg_name + ' moved to GitHub.',
+            config.get('migrate', 'ztk-path')])
 
 
 def update_winegg(config, options):
-    pkg_name = options.positional[0]
-    web_path = config.get('migrate', 'wineggbuilder-path')
-    do(['sed', '-i',
-        's/%s,.*/%s,git:\/\/github.com\/zopefoundation\/%s.git/g' %(
-                pkg_name, pkg_name, pkg_name),
-        os.path.join(web_path, 'project-list.cfg')
-        ])
-    do(['svn', 'ci', '-m', pkg_name+' moved to GitHub.', web_path])
+    for pkg_name in options.repos:
+        web_path = config.get('migrate', 'wineggbuilder-path')
+        do(['sed', '-i',
+            's/%s,.*/%s,git:\/\/github.com\/zopefoundation\/%s.git/g' %(
+                    pkg_name, pkg_name, pkg_name),
+            os.path.join(web_path, 'project-list.cfg')
+            ])
+        do(['svn', 'ci', '-m', pkg_name+' moved to GitHub.', web_path])
 
 
-def migrate_package(config, options):
+def migrate_packages(config, options):
     if options.create_repos:
         gh = repos.get_github(options)
-        repos.update_repository(gh, config, options)
+        repos.update_repositories(gh, config, options)
+
     git_path = options.git_path
     if git_path is None:
         git_path = tempfile.mkdtemp()
     print('Git Repos Path: ' + git_path)
+
     if options.convert:
         svn2git(git_path, config, options)
+
     if options.push:
         push2github(git_path, config, options)
+
     if options.clean_svn:
         clean_svn(config, options)
+
     if options.update_ztk:
         update_ztk(config, options)
+
     if options.update_winegg:
         update_winegg(config, options)
 
@@ -153,13 +163,13 @@ def get_options(parser, args=None, defaults=None):
     if len(positional) == 1:
         positional.append(None)
     options.positional = positional
-    options.repos, options.description = positional
+    options.repos = positional
     return options
 
 ###############################################################################
 # CLI
 
-parser = optparse.OptionParser("%prog [options] REPOS [DESC]")
+parser = optparse.OptionParser("%prog [options] [PKG1 PKG2 ...]")
 
 config = optparse.OptionGroup(
     parser, "Configuration", "Options that deal with migration.")
@@ -224,4 +234,4 @@ def migrate(args=None):
     options = get_options(parser, args)
     options.orig_args = orig_args
     config = load_config(options.configfile)
-    migrate_package(config, options)
+    migrate_packages(config, options)

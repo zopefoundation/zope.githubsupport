@@ -15,9 +15,11 @@
 """
 from __future__ import print_function
 import configparser
+import json
 import optparse
 import os
 import sys
+import urllib.request
 from github3 import login
 
 DEFAULT_CONFIG_FILE = os.path.join(
@@ -29,6 +31,15 @@ to_bool = lambda x: x.lower() in ('t', 'true', 'y', 'yes', 'on') or None
 CONV_MAP = {
     'email': {'send_from_author': to_bool}
     }
+
+def get_repo_description(name, config, options):
+    url = '%s/%s/json' % (config.get('pypi', 'url'), name)
+    try:
+        data = urllib.request.urlopen(url).read().decode()
+    except:
+        return None
+    info = json.loads(data)['info']
+    return info['summary']
 
 def update_hooks(repo, config, options):
     hooks = dict((h.name, h) for h in repo.iter_hooks())
@@ -65,24 +76,26 @@ def update_teams(org, repo, config, options):
         all_teams[name].remove_repo(repo.full_name)
         print('  * Removed Team: '+name)
 
-def update_repository(gh, config, options):
+def update_repositories(gh, config, options):
     org_name = config.get('github', 'organization')
-    name, desc = options.repos, options.description
-    repo = gh.repository(org_name, name)
     org = gh.organization(org_name)
-    if repo is None:
-        repo = org.create_repo(name, description=desc)
-        print("Created Repository: " + repo.name)
-    else:
-        print("Found Repository: " + repo.name)
-    if desc is not None:
-        updated = repo.edit(name, description=desc)
-        if updated:
-            print("Updated Title: " + desc)
+
+    for name in options.repos:
+        desc = get_repo_description(name, config, options)
+        repo = gh.repository(org_name, name)
+        if repo is None:
+            repo = org.create_repo(name, description=desc)
+            print("Created Repository: " + repo.name)
         else:
-            print("Updated Title: **FAILED**")
-    update_teams(org, repo, config, options)
-    update_hooks(repo, config, options)
+            print("Found Repository: " + repo.name)
+        if desc is not None and desc != repo.description:
+            updated = repo.edit(name, description=desc)
+            if updated:
+                print("Updated Title: " + desc)
+            else:
+                print("Updated Title: **FAILED**")
+        update_teams(org, repo, config, options)
+        update_hooks(repo, config, options)
 
 def update_all_repositories(gh, config, options):
     org_name = config.get('github', 'organization')
@@ -105,22 +118,13 @@ def get_options(parser, args=None, defaults=None):
     if args is None:
         args = sys.argv
     options, positional = parser.parse_args(args)
-    options.positional = positional
-    options.repos = options.description = None
-    if len(positional) == 1:
-        if options.all_repos:
-            options.description = positional[0]
-        else:
-            options.repos = positional[0]
-    elif len(positional) == 2:
-        options.repos = positional[0]
-        options.description = positional[1]
+    options.positional = options.repos = positional
     return options
 
 ###############################################################################
 # Command-line UI
 
-parser = optparse.OptionParser("%prog [options] [REPOS] [DESC]")
+parser = optparse.OptionParser("%prog [options] [PKG1 PKG2 ...]")
 
 config = optparse.OptionGroup(
     parser, "Configuration", "Options that deal with configuring the browser.")
@@ -154,7 +158,7 @@ def addrepos(args=None):
     options = get_options(parser, args)
     gh = get_github(options)
     config = load_config(options.configfile)
-    update_repository(gh, config, options)
+    update_repositories(gh, config, options)
 
 def updaterepos(args=None):
     if args is None:
@@ -166,4 +170,4 @@ def updaterepos(args=None):
     if options.all_repos:
         update_all_repositories(gh, config, options)
     else:
-        update_repository(gh, config, options)
+        update_repositories(gh, config, options)
