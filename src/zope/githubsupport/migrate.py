@@ -23,23 +23,10 @@ import sys
 import tempfile
 
 from zope.githubsupport import repos
+from zope.githubsupport.util import do
 
 DEFAULT_CONFIG_FILE = os.path.join(
     os.path.dirname(__file__), '..', '..', '..', 'zope.cfg')
-
-def do(cmd, cwd=None, print_stdout=True):
-    print(' '.join(cmd))
-    p = subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        cwd=cwd)
-    out, _ = p.communicate()
-    if out and print_stdout:
-        print(out.decode())
-    if p.returncode != 0:
-        sys.exit(p.returncode)
-
 
 def svn2git(target_path, config, options):
     print('Converting package into Git repository. ' +
@@ -123,10 +110,15 @@ def update_winegg(config, options):
             ])
         do(['svn', 'ci', '-m', pkg_name+' moved to GitHub.', web_path])
 
+def update_travis_yaml(config, options):
+    for pkg_name in options.repos:
+        repos.update_travis_yaml(pkg_name, config, options)
 
 def migrate_packages(config, options):
     if options.create_repos:
         gh = repos.get_github(options)
+        # Not the right time yet to update travis.yaml.
+        options.update_travis_yaml = False
         repos.update_repositories(gh, config, options)
 
     git_path = options.git_path
@@ -149,6 +141,8 @@ def migrate_packages(config, options):
     if options.update_winegg:
         update_winegg(config, options)
 
+    if options.add_travis_yaml:
+        update_travis_yaml(config, options)
 
 def load_config(configfile):
     conf = configparser.ConfigParser()
@@ -160,8 +154,6 @@ def get_options(parser, args=None, defaults=None):
     if args is None:
         args = sys.argv
     options, positional = parser.parse_args(args)
-    if len(positional) == 1:
-        positional.append(None)
     options.positional = positional
     options.repos = positional
     return options
@@ -179,6 +171,11 @@ config.add_option(
     help="A flag indicating that the GitHub repository should be also created.")
 
 config.add_option(
+    '--skip-repo-update', action="store_false", dest='update_repo',
+    default=True,
+    help="A flag indicating that the repo should not be updated, if they exist.")
+
+config.add_option(
     '--skip-convert', action="store_false", dest='convert', default=True,
     help="A flag indicating that the SVN to Git conversion should be skipped.")
 
@@ -189,6 +186,11 @@ config.add_option(
 config.add_option(
     '--skip-clean-svn', action="store_false", dest='clean_svn', default=True,
     help="A flag indicating that the SVN trunk should not be cleaned.")
+
+config.add_option(
+    '--skip-travis-yaml', action="store_false", dest='add_travis_yaml',
+    default=True,
+    help="A flag indicating that the travis.yml file should not be added.")
 
 config.add_option(
     '--skip-update-ztk', action="store_false", dest='update_ztk', default=True,
@@ -215,6 +217,10 @@ config.add_option(
 config.add_option(
     '--password', '--pwd', action="store", dest='password',
     help="Password to access the GitHub Web site.")
+
+config.add_option(
+    '--travis-token', '--token', action="store", dest='token',
+    help="The user token used by GitHub to talk with Travis CI.")
 
 config.add_option(
     '--config', '-c', action="store", dest='configfile',

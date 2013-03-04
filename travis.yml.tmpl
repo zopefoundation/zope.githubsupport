@@ -1,0 +1,7 @@
+language: python
+python:
+    {python_versions}
+install:
+    - pip install . --use-mirrors
+script:
+    - python setup.py test -q

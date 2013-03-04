@@ -22,6 +22,8 @@ import sys
 import urllib.request
 from github3 import login
 
+from .util import do
+
 DEFAULT_CONFIG_FILE = os.path.join(
     os.path.dirname(__file__), '..', '..', '..', 'zope.cfg')
 
@@ -32,6 +34,21 @@ CONV_MAP = {
     'email': {'send_from_author': to_bool}
     }
 
+TROVE_TO_TRAVIS_PY_VERSIONS = {
+    "Programming Language :: Python :: 2.6": '2.6',
+    "Programming Language :: Python :: 2.7": '2.7',
+    "Programming Language :: Python :: 3.2": '3.2',
+    "Programming Language :: Python :: 3.3": '3.3',
+    "Programming Language :: Python :: Implementation :: PyPy": 'pypy',
+}
+
+def get_sub_ns(config, options, repo=None):
+    return {
+        'github_username': options.username,
+        'github_password': options.password,
+        'travis_token': options.token,
+        'package': getattr(repo, 'name', None)}
+
 def get_repo_description(name, config, options):
     url = '%s/%s/json' % (config.get('pypi', 'url'), name)
     try:
@@ -41,14 +58,51 @@ def get_repo_description(name, config, options):
     info = json.loads(data)['info']
     return info['summary']
 
+def get_repo_classifiers(name, config, options):
+    url = '%s/%s/json' % (config.get('pypi', 'url'), name)
+    try:
+        data = urllib.request.urlopen(url).read().decode()
+    except:
+        return None
+    info = json.loads(data)['info']
+    return info['classifiers']
+
+def update_travis_yaml(repo, config, options):
+    name = repo if isinstance(repo, str) else repo.name
+    repos_path = config.get('local', 'packages-dir')
+    repo_path = os.path.join(repos_path, name)
+    if not os.path.exists(repo_path):
+        do(['git', 'clone', config.get('github', 'repo-url') + name],
+           cwd=repos_path)
+    elif not os.path.exists(os.path.join(repo_path, '.git')):
+        print('  * Skipping Travis YAML update')
+        print('    (Not a Git checkout: ' + repo_path + ')')
+        return
+    yaml_path = os.path.join(repo_path, '.travis.yml')
+    has_yaml = os.path.exists(yaml_path)
+    classifiers = get_repo_classifiers(name, config, options)
+    py_versions = [v for k, v in TROVE_TO_TRAVIS_PY_VERSIONS.items()
+                   if k in classifiers]
+    ns = {'python_versions': '- ' + '\n    - '.join(py_versions)}
+    with open(yaml_path, 'w') as out_file:
+        with open(config.get('travis', 'yaml-template'), 'r') as in_file:
+            out_file.write(in_file.read().format(**ns))
+    if not has_yaml:
+        do(['git', 'add', '.travis.yml'], cwd=repo_path)
+    do(['git', 'commit', '.travis.yml', '-m', 'Updated Travis YAML.'],
+       cwd=repo_path, print_stdout=False, print_cmd=False)
+    do(['git', 'push'], cwd=repo_path, print_stdout=False, print_cmd=False)
+    print('  * Updated Travis YAML file.')
+
 def update_hooks(repo, config, options):
+    ns = get_sub_ns(config, options, repo)
     hooks = dict((h.name, h) for h in repo.iter_hooks())
     for name in [section[6:] for section in config.sections()
                  if section.startswith('hooks')]:
         active = config.getboolean('hooks:'+name, 'active', fallback=True)
         OMAP = CONV_MAP.get(name, {})
         conf = dict(
-            [(oname, OMAP.get(oname, noop)(value))
+            [(oname, OMAP.get(oname, noop)(value.format(**ns)))
              for (oname, value) in config.items('hooks:'+name)
              if (oname not in ('active',) and
                  OMAP.get(oname, noop)(value) is not None)])
@@ -59,6 +113,7 @@ def update_hooks(repo, config, options):
             hook = hooks[name]
             hook.edit(name, conf)
             print("  * Updated Hook: " + hook.name)
+
 
 def update_teams(org, repo, config, options):
     all_teams = dict((t.name, t) for t in org.iter_teams())
@@ -76,26 +131,43 @@ def update_teams(org, repo, config, options):
         all_teams[name].remove_repo(repo.full_name)
         print('  * Removed Team: '+name)
 
+
 def update_repositories(gh, config, options):
     org_name = config.get('github', 'organization')
     org = gh.organization(org_name)
 
     for name in options.repos:
-        desc = get_repo_description(name, config, options)
         repo = gh.repository(org_name, name)
+        created = False
         if repo is None:
-            repo = org.create_repo(name, description=desc)
+            repo = org.create_repo(name)
+            created = True
             print("Created Repository: " + repo.name)
         else:
             print("Found Repository: " + repo.name)
+            if not options.update_repo:
+                print("  * Skipping update.")
+                continue
+        desc = get_repo_description(name, config, options)
         if desc is not None and desc != repo.description:
             updated = repo.edit(name, description=desc)
             if updated:
-                print("Updated Title: " + desc)
+                print("  * Updated Title: " + desc)
             else:
-                print("Updated Title: **FAILED**")
+                print("  * Updated Title: **FAILED**")
+        else:
+            if desc is None:
+                print("  * No Title found.")
+            else:
+                print("  * Title is up-to-date.")
         update_teams(org, repo, config, options)
         update_hooks(repo, config, options)
+        if not created:
+            update_travis_yaml(repo, config, options)
+        else:
+            print('  * Skipping Travis YAML file update.')
+            print('    (No source code yet.)')
+
 
 def update_all_repositories(gh, config, options):
     org_name = config.get('github', 'organization')
@@ -130,6 +202,16 @@ config = optparse.OptionGroup(
     parser, "Configuration", "Options that deal with configuring the browser.")
 
 config.add_option(
+    '--skip-repo-update', action="store_false", dest='update_repo',
+    default=True,
+    help="A flag indicating that the repo should not be updated, if they exist.")
+
+config.add_option(
+    '--skip-travis-yaml', action="store_false", dest='update_travis_yaml',
+    default=True,
+    help="A flag indicating that the travis.yml file should not be added.")
+
+config.add_option(
     '--all', action="store_true", dest='all_repos', default=False,
     help="Update all repositories.")
 
@@ -140,6 +222,10 @@ config.add_option(
 config.add_option(
     '--password', '--pwd', action="store", dest='password',
     help="Password to access the GitHub Web site.")
+
+config.add_option(
+    '--travis-token', '--token', action="store", dest='token',
+    help="The user token used by GitHub to talk with Travis CI.")
 
 config.add_option(
     '--config', '-c', action="store", dest='configfile',
