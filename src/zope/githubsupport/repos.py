@@ -92,8 +92,8 @@ def update_travis_yaml(repo, config, options):
             out_file.write(in_file.read().format(**ns))
     if not has_yaml:
         do(['git', 'add', '.travis.yml'], cwd=repo_path)
-    do(['git', 'commit', '.travis.yml', '-m', 'Updated Travis YAML.'],
-       cwd=repo_path, print_stdout=False, print_cmd=False)
+    do(['git', 'commit', '.travis.yml', '-m', "'Updated Travis YAML.'"],
+       cwd=repo_path, print_stdout=False, print_cmd=False, ignore_exit=True)
     do(['git', 'push'], cwd=repo_path, print_stdout=False, print_cmd=False)
     print('  * Updated Travis YAML file.')
 
@@ -143,6 +143,9 @@ def update_repositories(gh, config, options):
         repo = gh.repository(org_name, name)
         created = False
         if repo is None:
+            if not config.getboolean('github', 'create-repo'):
+                print("Missing Repository: " + name)
+                continue
             repo = org.create_repo(name)
             created = True
             print("Created Repository: " + repo.name)

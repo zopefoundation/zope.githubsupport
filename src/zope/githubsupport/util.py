@@ -16,7 +16,7 @@
 import subprocess
 import sys
 
-def do(cmd, cwd=None, print_stdout=True, print_cmd=True):
+def do(cmd, cwd=None, print_stdout=True, print_cmd=True, ignore_exit=False):
     if print_cmd:
         print(' '.join(cmd))
     p = subprocess.Popen(
@@ -28,4 +28,9 @@ def do(cmd, cwd=None, print_stdout=True, print_cmd=True):
     if out and print_stdout:
         print(out.decode())
     if p.returncode != 0:
-        sys.exit(p.returncode)
+        print('Failed command:')
+        print(' '.join(cmd))
+        if out:
+            print(out.decode())
+        if not ignore_exit:
+            sys.exit(p.returncode)
