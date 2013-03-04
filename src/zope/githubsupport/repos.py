@@ -78,12 +78,15 @@ def update_travis_yaml(repo, config, options):
         print('  * Skipping Travis YAML update')
         print('    (Not a Git checkout: ' + repo_path + ')')
         return
+    else:
+        do(['git', 'pull', '-r'], cwd=repo_path,
+           print_stdout=False, print_cmd=False)
     yaml_path = os.path.join(repo_path, '.travis.yml')
     has_yaml = os.path.exists(yaml_path)
     classifiers = get_repo_classifiers(name, config, options)
     py_versions = [v for k, v in TROVE_TO_TRAVIS_PY_VERSIONS.items()
                    if k in classifiers]
-    ns = {'python_versions': '- ' + '\n    - '.join(py_versions)}
+    ns = {'python_versions': '- ' + '\n    - '.join(sorted(py_versions))}
     with open(yaml_path, 'w') as out_file:
         with open(config.get('travis', 'yaml-template'), 'r') as in_file:
             out_file.write(in_file.read().format(**ns))
@@ -148,25 +151,29 @@ def update_repositories(gh, config, options):
             if not options.update_repo:
                 print("  * Skipping update.")
                 continue
-        desc = get_repo_description(name, config, options)
-        if desc is not None and desc != repo.description:
-            updated = repo.edit(name, description=desc)
-            if updated:
-                print("  * Updated Title: " + desc)
+        if config.getboolean('github', 'update-title'):
+            desc = get_repo_description(name, config, options)
+            if desc is not None and desc != repo.description:
+                updated = repo.edit(name, description=desc)
+                if updated:
+                    print("  * Updated Title: " + desc)
+                else:
+                    print("  * Updated Title: **FAILED**")
             else:
-                print("  * Updated Title: **FAILED**")
-        else:
-            if desc is None:
-                print("  * No Title found.")
+                if desc is None:
+                    print("  * No Title found.")
+                else:
+                    print("  * Title is up-to-date.")
+        if config.getboolean('github', 'update-teams'):
+            update_teams(org, repo, config, options)
+        if config.getboolean('github', 'update-hooks'):
+            update_hooks(repo, config, options)
+        if config.getboolean('github', 'update-travis'):
+            if not created:
+                update_travis_yaml(repo, config, options)
             else:
-                print("  * Title is up-to-date.")
-        update_teams(org, repo, config, options)
-        update_hooks(repo, config, options)
-        if not created:
-            update_travis_yaml(repo, config, options)
-        else:
-            print('  * Skipping Travis YAML file update.')
-            print('    (No source code yet.)')
+                print('  * Skipping Travis YAML file update.')
+                print('    (No source code yet.)')
 
 
 def update_all_repositories(gh, config, options):
