@@ -83,16 +83,25 @@ def update_travis_yaml(repo, config, options):
            print_stdout=False, print_cmd=False)
     yaml_path = os.path.join(repo_path, '.travis.yml')
     has_yaml = os.path.exists(yaml_path)
+    # Check whether this is a custom Travis configuration file.
+    if has_yaml:
+        with open(yaml_path, 'r') as file:
+            if 'custom' in file.read():
+                print('  * Skipping Travis YAML update')
+                print('    (The file is marked as custom.)')
+                return
     classifiers = get_repo_classifiers(name, config, options)
     py_versions = [v for k, v in TROVE_TO_TRAVIS_PY_VERSIONS.items()
                    if k in classifiers]
+    if not py_versions:
+        py_versions.append('2.7')
     ns = {'python_versions': '- ' + '\n    - '.join(sorted(py_versions))}
     with open(yaml_path, 'w') as out_file:
         with open(config.get('travis', 'yaml-template'), 'r') as in_file:
             out_file.write(in_file.read().format(**ns))
     if not has_yaml:
         do(['git', 'add', '.travis.yml'], cwd=repo_path)
-    do(['git', 'commit', '.travis.yml', '-m', "'Updated Travis YAML.'"],
+    do(['git', 'commit', '.travis.yml', '-m', "Updated Travis YAML."],
        cwd=repo_path, print_stdout=False, print_cmd=False, ignore_exit=True)
     do(['git', 'push'], cwd=repo_path, print_stdout=False, print_cmd=False)
     print('  * Updated Travis YAML file.')
@@ -140,6 +149,8 @@ def update_repositories(gh, config, options):
     org = gh.organization(org_name)
 
     for name in options.repos:
+        print()
+        print('=====[ '+name+' ]'+'='*(70-len(name)))
         repo = gh.repository(org_name, name)
         created = False
         if repo is None:
@@ -171,7 +182,8 @@ def update_repositories(gh, config, options):
             update_teams(org, repo, config, options)
         if config.getboolean('github', 'update-hooks'):
             update_hooks(repo, config, options)
-        if config.getboolean('github', 'update-travis'):
+        if (options.update_travis_yaml and
+            config.getboolean('github', 'update-travis')):
             if not created:
                 update_travis_yaml(repo, config, options)
             else:

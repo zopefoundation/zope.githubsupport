@@ -112,6 +112,7 @@ def update_winegg(config, options):
 
 def update_travis_yaml(config, options):
     for pkg_name in options.repos:
+        print('Adding Travis YAML to: ' + pkg_name)
         repos.update_travis_yaml(pkg_name, config, options)
 
 def migrate_packages(config, options):
