@@ -53,7 +53,7 @@ def get_repo_description(name, config, options):
     url = '%s/%s/json' % (config.get('pypi', 'url'), name)
     try:
         data = urllib.request.urlopen(url).read().decode()
-    except:
+    except Exception as err:
         return None
     info = json.loads(data)['info']
     return info['summary']
@@ -63,7 +63,7 @@ def get_repo_classifiers(name, config, options):
     try:
         data = urllib.request.urlopen(url).read().decode()
     except:
-        return None
+        return []
     info = json.loads(data)['info']
     return info['classifiers']
 
@@ -90,6 +90,12 @@ def update_travis_yaml(repo, config, options):
                 print('  * Skipping Travis YAML update')
                 print('    (The file is marked as custom.)')
                 return
+
+    # Check whether .gitignore is too restrictive.
+    ignore_path = os.path.join(repo_path, '.gitignore')
+    if os.path.exists(ignore_path):
+        do(['sed', '-i', 's/^\.\*$/\.installed\.cfg/g', ignore_path])
+
     classifiers = get_repo_classifiers(name, config, options)
     py_versions = [v for k, v in TROVE_TO_TRAVIS_PY_VERSIONS.items()
                    if k in classifiers]

@@ -73,15 +73,16 @@ def clean_svn(config, options):
         co_path = tempfile.mkdtemp()
         print('Checking out code from SVN into: ' + co_path)
         pkg_path = os.path.join(co_path, pkg_name+'.svn')
-        do(['svn', 'co',
+        do(['svn', 'co', '--ignore-externals',
             config.get('migrate', 'svn-repos')+pkg_name+'/trunk',
             pkg_path
             ])
+        do(['svn', 'propdel', 'svn:externals', '.'], pkg_path)
         to_delete = [os.path.join(pkg_path, fn)
                      for fn in os.listdir(pkg_path)
                      if fn not in ('.svn',)]
         if len(to_delete):
-            do(['svn', 'rm'] + to_delete)
+            do(['svn', 'rm', '--force'] + to_delete)
         moved_path = os.path.join(pkg_path, 'MOVED_TO_GITHUB')
         with io.open(moved_path, 'w') as file:
             file.write("See https://github.com/zopefoundation/"+pkg_name)
