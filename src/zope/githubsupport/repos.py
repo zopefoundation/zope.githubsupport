@@ -222,7 +222,8 @@ def update_all_repositories(gh, config, options):
         print("Found Repository: " + repo.name)
         if config.getboolean('github', 'update-teams'):
             update_teams(org, repo, config, options)
-        update_hooks(repo, config, options)
+        if config.getboolean('github', 'update-hooks'):
+            update_hooks(repo, config, options)
 
 
 def get_github(options):
