@@ -133,7 +133,7 @@ def update_hooks(repo, config, options):
             print("  * Created Hook: " + hook.name)
         else:
             hook = hooks[name]
-            hook.edit(name, conf, events=events)
+            hook.edit(conf, events=events)
             print("  * Updated Hook: " + hook.name)
 
 
