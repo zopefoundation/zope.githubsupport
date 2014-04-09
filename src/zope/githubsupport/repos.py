@@ -118,18 +118,20 @@ def update_hooks(repo, config, options):
     for name in [section[6:] for section in config.sections()
                  if section.startswith('hooks')]:
         active = config.getboolean('hooks:'+name, 'active', fallback=True)
+        events = config.get('hooks:'+name, 'events', fallback='push').split()
         OMAP = CONV_MAP.get(name, {})
         conf = dict(
             [(oname, OMAP.get(oname, noop)(value.format(**ns)))
              for (oname, value) in config.items('hooks:'+name)
-             if (oname not in ('active',) and
+             if (oname not in ('active', 'events') and
                  OMAP.get(oname, noop)(value) is not None)])
         if name not in hooks:
-            hook = repo.create_hook(name, conf, active=active)
+            hook = repo.create_hook(name, conf, events=events,
+                                    active=active)
             print("  * Created Hook: " + hook.name)
         else:
             hook = hooks[name]
-            hook.edit(name, conf)
+            hook.edit(name, conf, events=events)
             print("  * Updated Hook: " + hook.name)
 
 
