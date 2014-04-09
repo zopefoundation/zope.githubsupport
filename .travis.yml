@@ -1,0 +1,8 @@
+language: python
+python:
+    - 3.3
+install:
+    - python bootstrap.py
+    - bin/buildout
+notifications:
+    email: false
