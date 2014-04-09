@@ -220,7 +220,8 @@ def update_all_repositories(gh, config, options):
     org = gh.organization(org_name)
     for repo in org.iter_repos():
         print("Found Repository: " + repo.name)
-        update_teams(org, repo, config, options)
+        if config.getboolean('github', 'update-teams'):
+            update_teams(org, repo, config, options)
         update_hooks(repo, config, options)
 
 
