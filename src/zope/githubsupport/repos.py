@@ -209,6 +209,8 @@ def update_all_repositories(gh, config, options):
 
 
 def get_github(options):
+    if not options.username and not options.password:
+        sys.exit("Please specify your GitHub username and password")
     return login(options.username, options.password)
 
 def load_config(configfile):
