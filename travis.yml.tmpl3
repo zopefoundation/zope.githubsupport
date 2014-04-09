@@ -1,0 +1,9 @@
+language: python
+env:
+    {tox_environments}
+install:
+    - pip install tox
+script:
+    - tox
+notifications:
+    email: false

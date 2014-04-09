@@ -42,6 +42,14 @@ TROVE_TO_TRAVIS_PY_VERSIONS = {
     "Programming Language :: Python :: Implementation :: PyPy": 'pypy',
 }
 
+TROVE_TO_TOXENV_VERSIONS = {
+    "Programming Language :: Python :: 2.6": 'py26',
+    "Programming Language :: Python :: 2.7": 'py27',
+    "Programming Language :: Python :: 3.2": 'py32',
+    "Programming Language :: Python :: 3.3": 'py33',
+    "Programming Language :: Python :: Implementation :: PyPy": 'pypy',
+}
+
 def get_sub_ns(config, options, repo=None):
     return {
         'github_username': options.username,
@@ -99,9 +107,15 @@ def update_travis_yaml(repo, config, options):
     classifiers = get_repo_classifiers(name, config, options)
     py_versions = [v for k, v in TROVE_TO_TRAVIS_PY_VERSIONS.items()
                    if k in classifiers]
+    toxenvs = [v for k, v in TROVE_TO_TOXENV_VERSIONS.items()
+               if k in classifiers]
     if not py_versions:
         py_versions.append('2.7')
-    ns = {'python_versions': '- ' + '\n    - '.join(sorted(py_versions))}
+    if not toxenvs:
+        toxenvs.append('py27')
+    ns = {'python_versions': '- ' + '\n    - '.join(sorted(py_versions)),
+          'tox_environments': '\n    '.join('- TOXENV=' + e for e in sorted(toxenvs))}
+
     with open(yaml_path, 'w') as out_file:
         with open(config.get('travis', 'yaml-template'), 'r') as in_file:
             out_file.write(in_file.read().format(**ns))
