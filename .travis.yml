@@ -4,5 +4,7 @@ python:
 install:
     - python bootstrap.py
     - bin/buildout
+script:
+    - true
 notifications:
     email: false
