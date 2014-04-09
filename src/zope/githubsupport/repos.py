@@ -113,6 +113,8 @@ def update_travis_yaml(repo, config, options):
     print('  * Updated Travis YAML file.')
 
 def update_hooks(repo, config, options):
+    if not options.token:
+        sys.exit("Please specify the Travis CI token")
     ns = get_sub_ns(config, options, repo)
     hooks = dict((h.name, h) for h in repo.iter_hooks())
     for name in [section[6:] for section in config.sections()
